@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Countries Visited</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/topojson@3/dist/topojson.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    header {
+      padding: 12px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #1e293b;
+      flex-shrink: 0;
+      gap: 16px;
+    }
+
+    h1 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+      color: #f8fafc;
+      white-space: nowrap;
+    }
+
+    .stats {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .stat { text-align: center; }
+
+    .stat-number {
+      font-size: 1.4rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .stat-label {
+      font-size: 0.65rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #64748b;
+      margin-top: 2px;
+    }
+
+    .visited-count { color: #4ade80; }
+    .total-count   { color: #94a3b8; }
+    .pct-count     { color: #60a5fa; }
+
+    .legend {
+      display: flex;
+      gap: 14px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      color: #94a3b8;
+    }
+
+    .swatch {
+      width: 13px;
+      height: 13px;
+      border-radius: 3px;
+      flex-shrink: 0;
+    }
+
+    .swatch.visited   { background: #4ade80; }
+    .swatch.unvisited { background: #1e3a5f; border: 1px solid #2d5986; }
+
+    /* ── Main split ─────────────────────────────────────────── */
+    #main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    #map-container {
+      flex: 1;
+      position: relative;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    svg {
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+    }
+
+    svg:active { cursor: grabbing; }
+
+    .country {
+      stroke: #0f172a;
+      stroke-width: 0.4px;
+      cursor: pointer;
+      transition: filter 0.1s;
+    }
+
+    .country.unvisited { fill: #1e3a5f; }
+    .country.visited   { fill: #4ade80; }
+    .country:hover     { filter: brightness(1.35); }
+
+    .graticule { fill: none; stroke: #1e2d45; stroke-width: 0.3px; }
+    .sphere    { fill: #0a1929; }
+
+    /* Tooltip */
+    #tooltip {
+      position: absolute;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 0.82rem;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.15s;
+      white-space: nowrap;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+      z-index: 10;
+    }
+
+    #tooltip .tip-name   { font-weight: 600; color: #f1f5f9; }
+    #tooltip .tip-status { margin-top: 2px; font-size: 0.75rem; }
+    #tooltip .tip-status.v { color: #4ade80; }
+    #tooltip .tip-status.u { color: #64748b; }
+
+    .map-controls {
+      position: absolute;
+      bottom: 14px;
+      right: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+    }
+
+    .ctrl-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 7px;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #e2e8f0;
+      font-size: 1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+    }
+
+    .ctrl-btn:hover { background: #334155; }
+
+    .clear-btn {
+      position: absolute;
+      bottom: 14px;
+      left: 14px;
+      padding: 6px 13px;
+      border-radius: 7px;
+      border: 1px solid #334155;
+      background: #1e293b;
+      color: #94a3b8;
+      font-size: 0.76rem;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    .clear-btn:hover { background: #334155; color: #e2e8f0; }
+
+    /* ── Drag resize handle ─────────────────────────────────── */
+    #drag-handle {
+      height: 6px;
+      background: #1e293b;
+      border-top: 1px solid #334155;
+      border-bottom: 1px solid #334155;
+      cursor: ns-resize;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #drag-handle::after {
+      content: "";
+      width: 32px;
+      height: 2px;
+      border-radius: 1px;
+      background: #475569;
+    }
+
+    #drag-handle:hover::after { background: #64748b; }
+
+    /* ── Country grid panel ─────────────────────────────────── */
+    #grid-panel {
+      height: 220px;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      background: #0f172a;
+      min-height: 0;
+    }
+
+    #grid-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 14px;
+      border-bottom: 1px solid #1e293b;
+      flex-shrink: 0;
+    }
+
+    #grid-header span {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      white-space: nowrap;
+    }
+
+    #grid-search {
+      flex: 1;
+      max-width: 240px;
+      background: #1e293b;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #e2e8f0;
+      font-size: 0.78rem;
+      padding: 4px 10px;
+      outline: none;
+    }
+
+    #grid-search::placeholder { color: #475569; }
+    #grid-search:focus { border-color: #4ade80; }
+
+    #toggle-grid {
+      margin-left: auto;
+      background: none;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      color: #64748b;
+      font-size: 0.72rem;
+      padding: 3px 10px;
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    #toggle-grid:hover { color: #e2e8f0; border-color: #64748b; }
+
+    #country-grid {
+      flex: 1;
+      overflow-y: auto;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+      gap: 2px;
+      padding: 8px 12px;
+      align-content: start;
+    }
+
+    #country-grid::-webkit-scrollbar { width: 6px; }
+    #country-grid::-webkit-scrollbar-track { background: transparent; }
+    #country-grid::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+
+    .cb-item {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      padding: 4px 7px;
+      border-radius: 5px;
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+
+    .cb-item:hover { background: #1e293b; }
+
+    .cb-item input[type="checkbox"] {
+      accent-color: #4ade80;
+      width: 13px;
+      height: 13px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .cb-item .cb-label {
+      font-size: 0.78rem;
+      color: #94a3b8;
+      cursor: pointer;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: color 0.1s;
+      user-select: none;
+    }
+
+    .cb-item.checked .cb-label { color: #4ade80; }
+
+    .cb-hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Countries Visited</h1>
+  <div class="stats">
+    <div class="stat">
+      <div class="stat-number visited-count" id="visited-count">0</div>
+      <div class="stat-label">Visited</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number total-count" id="total-count">—</div>
+      <div class="stat-label">Total</div>
+    </div>
+    <div class="stat">
+      <div class="stat-number pct-count" id="pct-count">0%</div>
+      <div class="stat-label">Complete</div>
+    </div>
+  </div>
+  <div class="legend">
+    <div class="legend-item"><div class="swatch visited"></div> Visited</div>
+    <div class="legend-item"><div class="swatch unvisited"></div> Not visited</div>
+    <span style="font-size:0.72rem;color:#475569">Click map or checkboxes to toggle</span>
+  </div>
+</header>
+
+<div id="main">
+  <div id="map-container">
+    <div id="tooltip">
+      <div class="tip-name" id="tip-name"></div>
+      <div class="tip-status" id="tip-status"></div>
+    </div>
+
+    <div class="map-controls">
+      <button class="ctrl-btn" id="zoom-in"    title="Zoom in">+</button>
+      <button class="ctrl-btn" id="zoom-out"   title="Zoom out">−</button>
+      <button class="ctrl-btn" id="zoom-reset" title="Reset view">⌂</button>
+    </div>
+
+    <button class="clear-btn" id="clear-btn">Clear all</button>
+  </div>
+
+  <div id="drag-handle"></div>
+
+  <div id="grid-panel">
+    <div id="grid-header">
+      <span>All Countries</span>
+      <input id="grid-search" type="text" placeholder="Search countries…" autocomplete="off" />
+      <button id="toggle-grid">Hide ▾</button>
+    </div>
+    <div id="country-grid"></div>
+  </div>
+</div>
+
+<script>
+// ─── Country name lookup (ISO 3166-1 numeric → name) ─────────────────────────
+// Keys are ISO 3166-1 numeric (integer). Lookup via parseInt(d.id, 10).
+const NAMES = {
+  4:"Afghanistan",8:"Albania",12:"Algeria",20:"Andorra",24:"Angola",
+  28:"Antigua & Barbuda",32:"Argentina",51:"Armenia",36:"Australia",
+  40:"Austria",31:"Azerbaijan",44:"Bahamas",48:"Bahrain",50:"Bangladesh",
+  52:"Barbados",112:"Belarus",56:"Belgium",84:"Belize",204:"Benin",
+  64:"Bhutan",68:"Bolivia",70:"Bosnia & Herz.",72:"Botswana",76:"Brazil",
+  96:"Brunei",100:"Bulgaria",854:"Burkina Faso",108:"Burundi",132:"Cape Verde",
+  116:"Cambodia",120:"Cameroon",124:"Canada",140:"Central African Rep.",
+  148:"Chad",152:"Chile",156:"China",170:"Colombia",174:"Comoros",
+  178:"Congo",180:"DR Congo",188:"Costa Rica",384:"Côte d'Ivoire",
+  191:"Croatia",192:"Cuba",196:"Cyprus",203:"Czechia",208:"Denmark",
+  262:"Djibouti",212:"Dominica",214:"Dominican Rep.",626:"East Timor",
+  218:"Ecuador",818:"Egypt",222:"El Salvador",226:"Equatorial Guinea",
+  232:"Eritrea",233:"Estonia",231:"Ethiopia",246:"Finland",250:"France",
+  266:"Gabon",270:"Gambia",268:"Georgia",276:"Germany",288:"Ghana",
+  300:"Greece",304:"Greenland",308:"Grenada",320:"Guatemala",324:"Guinea",
+  624:"Guinea-Bissau",328:"Guyana",332:"Haiti",340:"Honduras",348:"Hungary",
+  352:"Iceland",356:"India",360:"Indonesia",364:"Iran",368:"Iraq",
+  372:"Ireland",380:"Italy",388:"Jamaica",392:"Japan",
+  400:"Jordan",398:"Kazakhstan",404:"Kenya",296:"Kiribati",408:"North Korea",
+  410:"South Korea",414:"Kuwait",417:"Kyrgyzstan",418:"Laos",428:"Latvia",
+  422:"Lebanon",426:"Lesotho",430:"Liberia",434:"Libya",438:"Liechtenstein",
+  440:"Lithuania",442:"Luxembourg",450:"Madagascar",454:"Malawi",458:"Malaysia",
+  462:"Maldives",466:"Mali",470:"Malta",584:"Marshall Islands",478:"Mauritania",
+  480:"Mauritius",484:"Mexico",583:"Micronesia",498:"Moldova",492:"Monaco",
+  496:"Mongolia",499:"Montenegro",504:"Morocco",508:"Mozambique",104:"Myanmar",
+  516:"Namibia",520:"Nauru",524:"Nepal",528:"Netherlands",540:"New Caledonia",
+  554:"New Zealand",558:"Nicaragua",562:"Niger",566:"Nigeria",807:"North Macedonia",
+  578:"Norway",512:"Oman",586:"Pakistan",585:"Palau",275:"Palestine",
+  591:"Panama",598:"Papua New Guinea",600:"Paraguay",604:"Peru",
+  608:"Philippines",616:"Poland",620:"Portugal",630:"Puerto Rico",
+  634:"Qatar",642:"Romania",643:"Russia",646:"Rwanda",659:"St Kitts & Nevis",
+  662:"St Lucia",670:"St Vincent & Grenadines",882:"Samoa",674:"San Marino",
+  678:"São Tomé & Príncipe",682:"Saudi Arabia",686:"Senegal",688:"Serbia",
+  690:"Seychelles",694:"Sierra Leone",702:"Singapore",703:"Slovakia",705:"Slovenia",
+  90:"Solomon Islands",706:"Somalia",710:"South Africa",728:"South Sudan",
+  724:"Spain",144:"Sri Lanka",729:"Sudan",740:"Suriname",748:"Eswatini",
+  752:"Sweden",756:"Switzerland",760:"Syria",762:"Tajikistan",834:"Tanzania",
+  764:"Thailand",768:"Togo",776:"Tonga",780:"Trinidad & Tobago",788:"Tunisia",
+  792:"Turkey",795:"Turkmenistan",798:"Tuvalu",800:"Uganda",804:"Ukraine",
+  784:"UAE",826:"United Kingdom",840:"United States",858:"Uruguay",
+  860:"Uzbekistan",548:"Vanuatu",862:"Venezuela",704:"Vietnam",887:"Yemen",
+  894:"Zambia",716:"Zimbabwe",
+  336:"Vatican City",
+  // territories & other features present in world-atlas
+  10:"Antarctica",158:"Taiwan",238:"Falkland Islands",
+  242:"Fiji",260:"Fr. S. Antarctic Lands",732:"Western Sahara",
+  474:"Martinique",534:"Sint Maarten",531:"Curaçao",533:"Aruba",
+  175:"Mayotte",638:"Réunion",654:"St Helena",
+  666:"St Pierre & Miquelon",663:"St Martin",312:"Guadeloupe",254:"French Guiana",
+  258:"French Polynesia",316:"Guam",581:"US Minor Outlying Is.",
+  850:"US Virgin Islands",796:"Turks & Caicos",
+  92:"British Virgin Islands",136:"Cayman Islands",60:"Bermuda",
+  744:"Svalbard",
+};
+
+// Countries present as sovereign states but too small to render on any practical
+// world map. These appear in the checkbox grid only — no map shape.
+const MAPLESS_COUNTRIES = [
+  { id: "336", name: "Vatican City" },
+  { id: "492", name: "Monaco" },
+  { id: "674", name: "San Marino" },
+  { id: "438", name: "Liechtenstein" },
+  { id: "520", name: "Nauru" },
+  { id: "798", name: "Tuvalu" },
+];
+
+// IDs to merge into another: { sourceId: canonicalId }. Both render as the canonical name.
+const MERGE = { "376": "275" }; // Israel → Palestine
+function effectiveId(rawId) { const s = String(rawId); return MERGE[s] || s; }
+
+const STORAGE_KEY = "visited-countries-v1";
+
+// ─── URL state encode / decode (bitmask — ~40 chars for all countries) ────────
+// ALL_IDS: every known country ID sorted numerically → stable bit positions.
+// Adding countries at the END preserves existing URLs; never reorder this list.
+const ALL_IDS = [...new Set([
+  ...Object.keys(NAMES).map(Number),
+  ...MAPLESS_COUNTRIES.map(c => parseInt(c.id, 10)),
+])].sort((a, b) => a - b).map(String);
+
+function encodeVisited(set) {
+  const bytes = new Uint8Array(Math.ceil(ALL_IDS.length / 8));
+  ALL_IDS.forEach((id, i) => { if (set.has(id)) bytes[i >> 3] |= 1 << (i & 7); });
+  return btoa(String.fromCharCode(...bytes));
+}
+
+function decodeVisited(b64) {
+  const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  const result = new Set();
+  ALL_IDS.forEach((id, i) => { if (bytes[i >> 3] & (1 << (i & 7))) result.add(id); });
+  return result;
+}
+
+function updateURL() {
+  history.replaceState(null, "", location.pathname + "?=" + encodeVisited(visited));
+}
+
+// On load: URL takes priority over localStorage (enables shared links)
+function loadInitialState() {
+  const qs = location.search;
+  if (qs.startsWith("?=")) {
+    try { return decodeVisited(qs.slice(2)); } catch (_) {}
+  }
+  try { return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]")); } catch (_) {}
+  return new Set();
+}
+
+let visited = loadInitialState();
+let totalCountries = 0;
+
+// ─── SVG setup ────────────────────────────────────────────────────────────────
+const mapContainer = document.getElementById("map-container");
+const w = () => mapContainer.clientWidth;
+const h = () => mapContainer.clientHeight;
+
+const svg = d3.select("#map-container").append("svg");
+const g   = svg.append("g");
+
+const projection = d3.geoNaturalEarth1()
+  .scale(160)
+  .translate([w() / 2, h() / 2]);
+
+const path = d3.geoPath().projection(projection);
+
+g.append("path").datum({type:"Sphere"}).attr("class","sphere").attr("d", path);
+g.append("path").datum(d3.geoGraticule()()).attr("class","graticule").attr("d", path);
+
+// ─── Zoom ─────────────────────────────────────────────────────────────────────
+const zoom = d3.zoom()
+  .scaleExtent([0.8, 12])
+  .on("zoom", e => g.attr("transform", e.transform));
+
+svg.call(zoom);
+
+document.getElementById("zoom-in").addEventListener("click",
+  () => svg.transition().duration(300).call(zoom.scaleBy, 1.5));
+document.getElementById("zoom-out").addEventListener("click",
+  () => svg.transition().duration(300).call(zoom.scaleBy, 1 / 1.5));
+document.getElementById("zoom-reset").addEventListener("click",
+  () => svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity));
+
+// ─── Tooltip ──────────────────────────────────────────────────────────────────
+const tooltip   = document.getElementById("tooltip");
+const tipName   = document.getElementById("tip-name");
+const tipStatus = document.getElementById("tip-status");
+
+function showTip(event, name, isVisited) {
+  tipName.textContent = name;
+  tipStatus.textContent = isVisited ? "✓ Visited" : "Not visited — click to mark";
+  tipStatus.className = "tip-status " + (isVisited ? "v" : "u");
+  tooltip.style.opacity = 1;
+  moveTip(event);
+}
+
+function moveTip(event) {
+  const x = event.offsetX, y = event.offsetY;
+  const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
+  const cx = mapContainer.clientWidth, cy = mapContainer.clientHeight;
+  tooltip.style.left = (x + 14 + tw > cx ? x - tw - 10 : x + 14) + "px";
+  tooltip.style.top  = (y + 14 + th > cy ? y - th - 10 : y + 14) + "px";
+}
+
+function hideTip() { tooltip.style.opacity = 0; }
+
+// ─── Stats ────────────────────────────────────────────────────────────────────
+function updateStats() {
+  document.getElementById("visited-count").textContent = visited.size;
+  document.getElementById("total-count").textContent   = totalCountries || "—";
+  document.getElementById("pct-count").textContent =
+    totalCountries ? Math.round(visited.size / totalCountries * 100) + "%" : "0%";
+}
+
+function save() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify([...visited]));
+  updateURL();
+}
+
+// ─── Core toggle (called from both map clicks and checkboxes) ─────────────────
+function setCountry(id, state) {
+  if (state) visited.add(id);
+  else        visited.delete(id);
+
+  // Update all map paths that share this effective ID (e.g. merged regions)
+  d3.selectAll(".country")
+    .filter(d => effectiveId(d.id) === id)
+    .classed("visited",   state)
+    .classed("unvisited", !state);
+
+  // Update checkbox
+  const item = document.querySelector(`.cb-item[data-id="${id}"]`);
+  if (item) {
+    item.classList.toggle("checked", state);
+    item.querySelector("input").checked = state;
+  }
+
+  save();
+  updateStats();
+}
+
+// ─── Load world data ──────────────────────────────────────────────────────────
+d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json").then(world => {
+  // Geometrically merge regions listed in MERGE so they render as one seamless shape.
+  const mergeGroups = {}; // canonicalId → [topoGeom, ...]
+  world.objects.countries.geometries.forEach(g => {
+    const canon = MERGE[String(g.id)] || String(g.id);
+    if (!mergeGroups[canon]) mergeGroups[canon] = [];
+    mergeGroups[canon].push(g);
+  });
+
+  const mergedIds = new Set(Object.keys(MERGE)); // IDs that get absorbed
+  let countries = topojson.feature(world, world.objects.countries).features
+    .filter(d => !mergedIds.has(String(d.id))); // drop absorbed originals
+
+  // For each group with >1 geometry, dissolve shared borders and inject a single feature
+  Object.entries(mergeGroups).forEach(([canonId, geoms]) => {
+    if (geoms.length < 2) return;
+    const merged = topojson.merge(world, geoms);
+    countries = countries.filter(d => String(d.id) !== canonId); // remove old canonical
+    countries.push({ type: "Feature", id: canonId, geometry: merged, properties: {} });
+  });
+
+  // Map paths
+  g.selectAll(".country")
+    .data(countries)
+    .join("path")
+    .attr("class", d => "country " + (visited.has(effectiveId(d.id)) ? "visited" : "unvisited"))
+    .attr("d", path)
+    .on("click", function(event, d) {
+      event.stopPropagation();
+      const id = effectiveId(d.id);
+      const next = !visited.has(id);
+      setCountry(id, next);
+      const name = NAMES[parseInt(id, 10)] || ("Country " + id);
+      showTip(event, name, next);
+    })
+    .on("mousemove", (event) => moveTip(event))
+    .on("mouseenter", function(event, d) {
+      const id = effectiveId(d.id);
+      showTip(event, NAMES[parseInt(id, 10)] || ("Country " + id), visited.has(id));
+    })
+    .on("mouseleave", hideTip);
+
+  // Build sorted checkbox grid — deduplicate merged regions, add mapless microstates
+  const seen = new Set();
+  const fromMap = countries
+    .filter(d => d.id != null && !isNaN(parseInt(d.id, 10)))
+    .map(d => { const id = effectiveId(d.id); return { id, name: NAMES[parseInt(id, 10)] || ("Country " + id) }; })
+    .filter(({ id }) => { if (seen.has(id)) return false; seen.add(id); return true; });
+
+  // Append mapless microstates that aren't already covered by a map shape
+  const maplessExtra = MAPLESS_COUNTRIES.filter(({ id }) => !seen.has(id));
+
+  const sorted = [...fromMap, ...maplessExtra]
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  totalCountries = sorted.length;
+
+  const grid = document.getElementById("country-grid");
+  sorted.forEach(({ id, name }) => {
+    const item = document.createElement("label");
+    item.className = "cb-item" + (visited.has(id) ? " checked" : "");
+    item.dataset.id = id;
+
+    const cb = document.createElement("input");
+    cb.type    = "checkbox";
+    cb.checked = visited.has(id);
+    cb.addEventListener("change", () => setCountry(id, cb.checked));
+
+    const span = document.createElement("span");
+    span.className   = "cb-label";
+    span.textContent = name;
+    span.title       = name;
+
+    item.appendChild(cb);
+    item.appendChild(span);
+    grid.appendChild(item);
+  });
+
+  updateStats();
+});
+
+// ─── Search filter ────────────────────────────────────────────────────────────
+document.getElementById("grid-search").addEventListener("input", function() {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll(".cb-item").forEach(item => {
+    const name = item.querySelector(".cb-label").textContent.toLowerCase();
+    item.classList.toggle("cb-hidden", q.length > 0 && !name.includes(q));
+  });
+});
+
+// ─── Toggle grid visibility ───────────────────────────────────────────────────
+const gridPanel  = document.getElementById("grid-panel");
+const dragHandle = document.getElementById("drag-handle");
+const toggleBtn  = document.getElementById("toggle-grid");
+let gridVisible  = true;
+let savedHeight  = 220;
+
+toggleBtn.addEventListener("click", () => {
+  gridVisible = !gridVisible;
+  if (gridVisible) {
+    gridPanel.style.height  = savedHeight + "px";
+    dragHandle.style.display = "";
+    toggleBtn.textContent    = "Hide ▾";
+  } else {
+    savedHeight              = gridPanel.offsetHeight;
+    gridPanel.style.height   = "0px";
+    dragHandle.style.display = "none";
+    toggleBtn.textContent    = "Show ▴";
+  }
+});
+
+// ─── Drag to resize ───────────────────────────────────────────────────────────
+let dragging = false, dragStartY = 0, dragStartH = 0;
+
+dragHandle.addEventListener("mousedown", e => {
+  dragging   = true;
+  dragStartY = e.clientY;
+  dragStartH = gridPanel.offsetHeight;
+  document.body.style.userSelect = "none";
+  document.body.style.cursor     = "ns-resize";
+});
+
+window.addEventListener("mousemove", e => {
+  if (!dragging) return;
+  const delta  = dragStartY - e.clientY;
+  const newH   = Math.max(60, Math.min(dragStartH + delta, window.innerHeight * 0.7));
+  gridPanel.style.height = newH + "px";
+});
+
+window.addEventListener("mouseup", () => {
+  if (!dragging) return;
+  dragging = false;
+  document.body.style.userSelect = "";
+  document.body.style.cursor     = "";
+  savedHeight = gridPanel.offsetHeight;
+});
+
+// ─── Clear all ────────────────────────────────────────────────────────────────
+document.getElementById("clear-btn").addEventListener("click", () => {
+  if (!confirm("Clear all visited countries?")) return;
+  [...visited].forEach(id => setCountry(id, false));
+});
+
+// ─── Resize window ────────────────────────────────────────────────────────────
+window.addEventListener("resize", () => {
+  projection.translate([w() / 2, h() / 2]);
+  g.selectAll(".country").attr("d", path);
+  g.selectAll(".sphere").attr("d", path);
+  g.selectAll(".graticule").attr("d", path);
+});
+</script>
+</body>
+</html>
