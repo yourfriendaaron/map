@@ -443,7 +443,17 @@ const MAPLESS_COUNTRIES = [
 
 // IDs to merge into another: { sourceId: canonicalId }. Both render as the canonical name.
 const MERGE = { "376": "275" }; // Israel → Palestine
-function effectiveId(rawId) { const s = String(rawId); return MERGE[s] || s; }
+
+// Normalize to unpadded decimal string ("056" → "56"). world-atlas stores IDs < 100
+// as zero-padded strings, but NAMES keys and ALL_IDS drop the padding (Object.keys /
+// parseInt). Canonicalizing here keeps `visited`, localStorage, and the URL bitmask
+// all speaking the same dialect.
+function effectiveId(rawId) {
+  const n = parseInt(rawId, 10);
+  if (isNaN(n)) return String(rawId);
+  const s = String(n);
+  return MERGE[s] || s;
+}
 
 const STORAGE_KEY = "visited-countries-v1";
 
@@ -478,7 +488,7 @@ function loadInitialState() {
   if (qs.startsWith("?=")) {
     try { return decodeVisited(qs.slice(2)); } catch (_) {}
   }
-  try { return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]")); } catch (_) {}
+  try { return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]").map(id => effectiveId(id))); } catch (_) {}
   return new Set();
 }
 
