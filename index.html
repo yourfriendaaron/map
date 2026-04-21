@@ -337,6 +337,17 @@
     .cb-item.checked .cb-label { color: #4ade80; }
 
     .cb-hidden { display: none !important; }
+
+    /* ── Mobile ─────────────────────────────────────────────── */
+    @media (max-width: 640px) {
+      header { padding: 8px 12px; gap: 10px; }
+      h1 { font-size: 0.9rem; }
+      .stats { gap: 12px; }
+      .stat-number { font-size: 1.15rem; }
+      .legend { display: none; }
+      .share-btn { padding: 6px 8px; }
+      .share-btn .share-label { display: none; }
+    }
   </style>
 </head>
 <body>
