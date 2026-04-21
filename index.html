@@ -468,8 +468,7 @@ const NAMES = {
   580:"N. Mariana Islands",612:"Pitcairn Islands",652:"St Barthélemy",
   660:"Anguilla",
   // Synthetic IDs (>= 900) for Natural Earth features without ISO 3166-1 numeric
-  // codes. Kept at the end of the sorted ALL_IDS list so existing share URLs
-  // (which encode bit positions) stay backward compatible.
+  // codes. URL positions are assigned separately in BIT_POSITIONS.
   900:"Kosovo",901:"N. Cyprus",902:"Somaliland",
 };
 
@@ -498,9 +497,9 @@ const MAPLESS_COUNTRIES = [
 const MERGE = { "376": "275" }; // Israel → Palestine
 
 // Normalize to unpadded decimal string ("056" → "56"). world-atlas stores IDs < 100
-// as zero-padded strings, but NAMES keys and ALL_IDS drop the padding (Object.keys /
-// parseInt). Canonicalizing here keeps `visited`, localStorage, and the URL bitmask
-// all speaking the same dialect.
+// as zero-padded strings, but NAMES keys and BIT_POSITIONS drop the padding.
+// Canonicalizing here keeps `visited`, localStorage, and the URL bitmask all
+// speaking the same dialect.
 function effectiveId(rawId) {
   const n = parseInt(rawId, 10);
   if (isNaN(n)) return String(rawId);
@@ -519,24 +518,282 @@ function featureName(d, id) {
 
 const STORAGE_KEY = "visited-countries-v1";
 
-// ─── URL state encode / decode (bitmask — ~40 chars for all countries) ────────
-// ALL_IDS: every known country ID sorted numerically → stable bit positions.
-// Adding countries at the END preserves existing URLs; never reorder this list.
-const ALL_IDS = [...new Set([
-  ...Object.keys(NAMES).map(Number),
-  ...MAPLESS_COUNTRIES.map(c => parseInt(c.id, 10)),
-])].sort((a, b) => a - b).map(String);
+// ─── URL state encode / decode (bitmask — ~44 chars for all countries) ───────
+// BIT_POSITIONS maps country ID → bit position in the URL bitmask. This is the
+// *authoritative* source for URL encoding, decoupled from NAMES on purpose.
+//
+// APPEND-ONLY INVARIANT: never reorder, renumber, or delete an entry. Doing so
+// silently invalidates every shared URL. When adding a country, pick the next
+// unused position (MAX_POSITION + 1). When deleting one, leave its slot as a
+// dead bit — do not reuse. Adding to NAMES alone does not affect URLs.
+const BIT_POSITIONS = {
+  "4":0,    // Afghanistan
+  "8":1,    // Albania
+  "10":2,   // Antarctica
+  "12":3,   // Algeria
+  "16":4,   // American Samoa
+  "20":5,   // Andorra
+  "24":6,   // Angola
+  "28":7,   // Antigua & Barbuda
+  "31":8,   // Azerbaijan
+  "32":9,   // Argentina
+  "36":10,  // Australia
+  "40":11,  // Austria
+  "44":12,  // Bahamas
+  "48":13,  // Bahrain
+  "50":14,  // Bangladesh
+  "51":15,  // Armenia
+  "52":16,  // Barbados
+  "56":17,  // Belgium
+  "60":18,  // Bermuda
+  "64":19,  // Bhutan
+  "68":20,  // Bolivia
+  "70":21,  // Bosnia & Herz.
+  "72":22,  // Botswana
+  "76":23,  // Brazil
+  "84":24,  // Belize
+  "86":25,  // British Indian Ocean Terr.
+  "90":26,  // Solomon Islands
+  "92":27,  // British Virgin Islands
+  "96":28,  // Brunei
+  "100":29, // Bulgaria
+  "104":30, // Myanmar
+  "108":31, // Burundi
+  "112":32, // Belarus
+  "116":33, // Cambodia
+  "120":34, // Cameroon
+  "124":35, // Canada
+  "132":36, // Cape Verde
+  "136":37, // Cayman Islands
+  "140":38, // Central African Rep.
+  "144":39, // Sri Lanka
+  "148":40, // Chad
+  "152":41, // Chile
+  "156":42, // China
+  "158":43, // Taiwan
+  "170":44, // Colombia
+  "174":45, // Comoros
+  "175":46, // Mayotte
+  "178":47, // Congo
+  "180":48, // DR Congo
+  "184":49, // Cook Islands
+  "188":50, // Costa Rica
+  "191":51, // Croatia
+  "192":52, // Cuba
+  "196":53, // Cyprus
+  "203":54, // Czechia
+  "204":55, // Benin
+  "208":56, // Denmark
+  "212":57, // Dominica
+  "214":58, // Dominican Rep.
+  "218":59, // Ecuador
+  "222":60, // El Salvador
+  "226":61, // Equatorial Guinea
+  "231":62, // Ethiopia
+  "232":63, // Eritrea
+  "233":64, // Estonia
+  "234":65, // Faroe Islands
+  "238":66, // Falkland Islands
+  "239":67, // South Georgia & S. Sandwich Is.
+  "242":68, // Fiji
+  "246":69, // Finland
+  "248":70, // Åland Islands
+  "250":71, // France
+  "254":72, // French Guiana
+  "258":73, // French Polynesia
+  "260":74, // Fr. S. Antarctic Lands
+  "262":75, // Djibouti
+  "266":76, // Gabon
+  "268":77, // Georgia
+  "270":78, // Gambia
+  "275":79, // Palestine
+  "276":80, // Germany
+  "288":81, // Ghana
+  "296":82, // Kiribati
+  "300":83, // Greece
+  "304":84, // Greenland
+  "308":85, // Grenada
+  "312":86, // Guadeloupe
+  "316":87, // Guam
+  "320":88, // Guatemala
+  "324":89, // Guinea
+  "328":90, // Guyana
+  "332":91, // Haiti
+  "334":92, // Heard & McDonald Is.
+  "336":93, // Vatican City
+  "340":94, // Honduras
+  "344":95, // Hong Kong
+  "348":96, // Hungary
+  "352":97, // Iceland
+  "356":98, // India
+  "360":99, // Indonesia
+  "364":100,// Iran
+  "368":101,// Iraq
+  "372":102,// Ireland
+  "380":103,// Italy
+  "384":104,// Côte d'Ivoire
+  "388":105,// Jamaica
+  "392":106,// Japan
+  "398":107,// Kazakhstan
+  "400":108,// Jordan
+  "404":109,// Kenya
+  "408":110,// North Korea
+  "410":111,// South Korea
+  "414":112,// Kuwait
+  "417":113,// Kyrgyzstan
+  "418":114,// Laos
+  "422":115,// Lebanon
+  "426":116,// Lesotho
+  "428":117,// Latvia
+  "430":118,// Liberia
+  "434":119,// Libya
+  "438":120,// Liechtenstein
+  "440":121,// Lithuania
+  "442":122,// Luxembourg
+  "446":123,// Macao
+  "450":124,// Madagascar
+  "454":125,// Malawi
+  "458":126,// Malaysia
+  "462":127,// Maldives
+  "466":128,// Mali
+  "470":129,// Malta
+  "474":130,// Martinique
+  "478":131,// Mauritania
+  "480":132,// Mauritius
+  "484":133,// Mexico
+  "492":134,// Monaco
+  "496":135,// Mongolia
+  "498":136,// Moldova
+  "499":137,// Montenegro
+  "500":138,// Montserrat
+  "504":139,// Morocco
+  "508":140,// Mozambique
+  "512":141,// Oman
+  "516":142,// Namibia
+  "520":143,// Nauru
+  "524":144,// Nepal
+  "528":145,// Netherlands
+  "531":146,// Curaçao
+  "533":147,// Aruba
+  "534":148,// Sint Maarten
+  "540":149,// New Caledonia
+  "548":150,// Vanuatu
+  "554":151,// New Zealand
+  "558":152,// Nicaragua
+  "562":153,// Niger
+  "566":154,// Nigeria
+  "570":155,// Niue
+  "574":156,// Norfolk Island
+  "578":157,// Norway
+  "580":158,// N. Mariana Islands
+  "581":159,// US Minor Outlying Is.
+  "583":160,// Micronesia
+  "584":161,// Marshall Islands
+  "585":162,// Palau
+  "586":163,// Pakistan
+  "591":164,// Panama
+  "598":165,// Papua New Guinea
+  "600":166,// Paraguay
+  "604":167,// Peru
+  "608":168,// Philippines
+  "612":169,// Pitcairn Islands
+  "616":170,// Poland
+  "620":171,// Portugal
+  "624":172,// Guinea-Bissau
+  "626":173,// East Timor
+  "630":174,// Puerto Rico
+  "634":175,// Qatar
+  "638":176,// Réunion
+  "642":177,// Romania
+  "643":178,// Russia
+  "646":179,// Rwanda
+  "652":180,// St Barthélemy
+  "654":181,// St Helena
+  "659":182,// St Kitts & Nevis
+  "660":183,// Anguilla
+  "662":184,// St Lucia
+  "663":185,// St Martin
+  "666":186,// St Pierre & Miquelon
+  "670":187,// St Vincent & Grenadines
+  "674":188,// San Marino
+  "678":189,// São Tomé & Príncipe
+  "682":190,// Saudi Arabia
+  "686":191,// Senegal
+  "688":192,// Serbia
+  "690":193,// Seychelles
+  "694":194,// Sierra Leone
+  "702":195,// Singapore
+  "703":196,// Slovakia
+  "704":197,// Vietnam
+  "705":198,// Slovenia
+  "706":199,// Somalia
+  "710":200,// South Africa
+  "716":201,// Zimbabwe
+  "724":202,// Spain
+  "728":203,// South Sudan
+  "729":204,// Sudan
+  "732":205,// Western Sahara
+  "740":206,// Suriname
+  "744":207,// Svalbard
+  "748":208,// Eswatini
+  "752":209,// Sweden
+  "756":210,// Switzerland
+  "760":211,// Syria
+  "762":212,// Tajikistan
+  "764":213,// Thailand
+  "768":214,// Togo
+  "776":215,// Tonga
+  "780":216,// Trinidad & Tobago
+  "784":217,// UAE
+  "788":218,// Tunisia
+  "792":219,// Turkey
+  "795":220,// Turkmenistan
+  "796":221,// Turks & Caicos
+  "798":222,// Tuvalu
+  "800":223,// Uganda
+  "804":224,// Ukraine
+  "807":225,// North Macedonia
+  "818":226,// Egypt
+  "826":227,// United Kingdom
+  "831":228,// Guernsey
+  "832":229,// Jersey
+  "833":230,// Isle of Man
+  "834":231,// Tanzania
+  "840":232,// United States
+  "850":233,// US Virgin Islands
+  "854":234,// Burkina Faso
+  "858":235,// Uruguay
+  "860":236,// Uzbekistan
+  "862":237,// Venezuela
+  "876":238,// Wallis & Futuna
+  "882":239,// Samoa
+  "887":240,// Yemen
+  "894":241,// Zambia
+  "900":242,// Kosovo
+  "901":243,// N. Cyprus
+  "902":244,// Somaliland
+};
+
+const BITMASK_BYTES = Math.ceil(
+  (Math.max(...Object.values(BIT_POSITIONS)) + 1) / 8
+);
 
 function encodeVisited(set) {
-  const bytes = new Uint8Array(Math.ceil(ALL_IDS.length / 8));
-  ALL_IDS.forEach((id, i) => { if (set.has(id)) bytes[i >> 3] |= 1 << (i & 7); });
+  const bytes = new Uint8Array(BITMASK_BYTES);
+  for (const id of set) {
+    const pos = BIT_POSITIONS[id];
+    if (pos != null) bytes[pos >> 3] |= 1 << (pos & 7);
+  }
   return btoa(String.fromCharCode(...bytes));
 }
 
 function decodeVisited(b64) {
   const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
   const result = new Set();
-  ALL_IDS.forEach((id, i) => { if (bytes[i >> 3] & (1 << (i & 7))) result.add(id); });
+  for (const id in BIT_POSITIONS) {
+    const pos = BIT_POSITIONS[id];
+    if (bytes[pos >> 3] & (1 << (pos & 7))) result.add(id);
+  }
   return result;
 }
 
