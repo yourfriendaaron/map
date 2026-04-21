@@ -859,6 +859,7 @@ g.append("path").datum(d3.geoGraticule()()).attr("class","graticule").attr("d", 
 // ─── Zoom ─────────────────────────────────────────────────────────────────────
 const zoom = d3.zoom()
   .scaleExtent([1, 12])
+  .extent([[0, 0], [w(), h()]])
   .translateExtent([[0, 0], [w(), h()]]) // pan is clamped to the viewport at scale 1
   .on("zoom", e => g.attr("transform", e.transform));
 
@@ -1076,6 +1077,25 @@ window.addEventListener("mouseup", () => {
   savedHeight = gridPanel.offsetHeight;
 });
 
+// ─── Mobile: expand grid-panel on search focus so the keyboard doesn't hide
+// the input and results. Body has overflow:hidden, so scrollIntoView can't
+// help; instead we grow the panel upward above the keyboard.
+const MOBILE_BP = 640;
+const gridSearch = document.getElementById("grid-search");
+let preFocusHeight = null;
+
+gridSearch.addEventListener("focus", () => {
+  if (window.innerWidth > MOBILE_BP) return;
+  preFocusHeight = gridPanel.style.height || (savedHeight + "px");
+  gridPanel.style.height = "70vh";
+});
+
+gridSearch.addEventListener("blur", () => {
+  if (preFocusHeight == null) return;
+  gridPanel.style.height = preFocusHeight;
+  preFocusHeight = null;
+});
+
 // ─── Clear all ────────────────────────────────────────────────────────────────
 document.getElementById("clear-btn").addEventListener("click", () => {
   if (!confirm("Clear all visited countries?")) return;
@@ -1116,7 +1136,8 @@ shareBtn.addEventListener("click", async () => {
 // ─── Resize window ────────────────────────────────────────────────────────────
 window.addEventListener("resize", () => {
   fitProjection();
-  zoom.translateExtent([[0, 0], [w(), h()]]);
+  zoom.extent([[0, 0], [w(), h()]])
+      .translateExtent([[0, 0], [w(), h()]]);
   g.selectAll(".country").attr("d", path);
   g.selectAll(".sphere").attr("d", path);
   g.selectAll(".graticule").attr("d", path);
