@@ -220,6 +220,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
+      touch-action: none;
     }
 
     #drag-handle::after {
@@ -1054,24 +1055,26 @@ toggleBtn.addEventListener("click", () => {
 // ─── Drag to resize ───────────────────────────────────────────────────────────
 let dragging = false, dragStartY = 0, dragStartH = 0;
 
-dragHandle.addEventListener("mousedown", e => {
+dragHandle.addEventListener("pointerdown", e => {
   dragging   = true;
   dragStartY = e.clientY;
   dragStartH = gridPanel.offsetHeight;
+  dragHandle.setPointerCapture(e.pointerId);
   document.body.style.userSelect = "none";
   document.body.style.cursor     = "ns-resize";
 });
 
-window.addEventListener("mousemove", e => {
+dragHandle.addEventListener("pointermove", e => {
   if (!dragging) return;
   const delta  = dragStartY - e.clientY;
   const newH   = Math.max(60, Math.min(dragStartH + delta, window.innerHeight * 0.7));
   gridPanel.style.height = newH + "px";
 });
 
-window.addEventListener("mouseup", () => {
+dragHandle.addEventListener("pointerup", e => {
   if (!dragging) return;
   dragging = false;
+  dragHandle.releasePointerCapture(e.pointerId);
   document.body.style.userSelect = "";
   document.body.style.cursor     = "";
   savedHeight = gridPanel.offsetHeight;
