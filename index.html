@@ -467,6 +467,20 @@ const NAMES = {
   239:"South Georgia & S. Sandwich Is.",570:"Niue",574:"Norfolk Island",
   580:"N. Mariana Islands",612:"Pitcairn Islands",652:"St Barthélemy",
   660:"Anguilla",
+  // Synthetic IDs (>= 900) for Natural Earth features without ISO 3166-1 numeric
+  // codes. Kept at the end of the sorted ALL_IDS list so existing share URLs
+  // (which encode bit positions) stay backward compatible.
+  900:"Kosovo",901:"N. Cyprus",902:"Somaliland",
+};
+
+// Natural Earth assigns id = undefined to features whose ISO_N3 is "-99". Without
+// this patch they all collide under a single "undefined" key — clicking one marks
+// them all, and the tooltip reads "Country undefined". Map them by properties.name
+// to the synthetic IDs declared above so each is tracked independently.
+const SYNTHETIC_ID_BY_NAME = {
+  "Kosovo":     "900",
+  "N. Cyprus":  "901",
+  "Somaliland": "902",
 };
 
 // Countries present as sovereign states but too small to render on any practical
@@ -492,6 +506,15 @@ function effectiveId(rawId) {
   if (isNaN(n)) return String(rawId);
   const s = String(n);
   return MERGE[s] || s;
+}
+
+// Prefer the curated NAMES label, but fall back to the topojson properties.name
+// before landing on "Country <id>" — guards against any future Natural Earth
+// feature we haven't explicitly mapped still rendering as "Country undefined".
+function featureName(d, id) {
+  return NAMES[parseInt(id, 10)]
+    || (d && d.properties && d.properties.name)
+    || ("Country " + id);
 }
 
 const STORAGE_KEY = "visited-countries-v1";
@@ -527,7 +550,15 @@ function loadInitialState() {
   if (qs.startsWith("?=")) {
     try { return decodeVisited(qs.slice(2)); } catch (_) {}
   }
-  try { return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]").map(id => effectiveId(id))); } catch (_) {}
+  try {
+    // Drop the legacy "undefined" entry produced by prior versions that stored a
+    // single shared key for every feature without an ISO numeric id.
+    return new Set(
+      JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]")
+        .map(id => effectiveId(id))
+        .filter(id => id !== "undefined")
+    );
+  } catch (_) {}
   return new Set();
 }
 
@@ -632,6 +663,16 @@ function setCountry(id, state) {
 
 // ─── Load world data ──────────────────────────────────────────────────────────
 d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json").then(world => {
+  // Patch features that topojson emits with id=undefined (ISO_N3 "-99" in Natural
+  // Earth) using their properties.name. Do this before the merge pass so downstream
+  // keying by String(g.id) has a stable value.
+  world.objects.countries.geometries.forEach(g => {
+    if (g.id == null || isNaN(parseInt(g.id, 10))) {
+      const syn = SYNTHETIC_ID_BY_NAME[g.properties && g.properties.name];
+      if (syn) g.id = syn;
+    }
+  });
+
   // Geometrically merge regions listed in MERGE so they render as one seamless shape.
   const mergeGroups = {}; // canonicalId → [topoGeom, ...]
   world.objects.countries.geometries.forEach(g => {
@@ -663,13 +704,12 @@ d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json").then(wo
       const id = effectiveId(d.id);
       const next = !visited.has(id);
       setCountry(id, next);
-      const name = NAMES[parseInt(id, 10)] || ("Country " + id);
-      showTip(event, name, next);
+      showTip(event, featureName(d, id), next);
     })
     .on("mousemove", (event) => moveTip(event))
     .on("mouseenter", function(event, d) {
       const id = effectiveId(d.id);
-      showTip(event, NAMES[parseInt(id, 10)] || ("Country " + id), visited.has(id));
+      showTip(event, featureName(d, id), visited.has(id));
     })
     .on("mouseleave", hideTip);
 
@@ -677,7 +717,7 @@ d3.json("https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json").then(wo
   const seen = new Set();
   const fromMap = countries
     .filter(d => d.id != null && !isNaN(parseInt(d.id, 10)))
-    .map(d => { const id = effectiveId(d.id); return { id, name: NAMES[parseInt(id, 10)] || ("Country " + id) }; })
+    .map(d => ({ id: effectiveId(d.id), name: featureName(d, effectiveId(d.id)) }))
     .filter(({ id }) => { if (seen.has(id)) return false; seen.add(id); return true; });
 
   // Append mapless microstates that aren't already covered by a map shape
